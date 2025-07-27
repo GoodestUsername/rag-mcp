@@ -1,0 +1,29 @@
+[project]
+name = "rag-mcp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pylance>=0.31.1",
+    "pymupdf>=1.26.3",
+    "pymupdf4llm>=0.0.27",
+    "sentence-transformers>=5.0.0",
+    "torch",
+    "llama-index",
+    "einops>=0.8.1",
+    "surrealdb>=1.0.6",
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchvision = [
+  { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
