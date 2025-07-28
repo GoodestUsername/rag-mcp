@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import uuid
-from typing import List, Sequence, Union
+from typing import List, Sequence, TypedDict, Union
 
 from llama_index.core.schema import BaseNode, MetadataMode, TextNode
 from pydantic import BaseModel
@@ -11,6 +11,59 @@ from surrealdb.data.types.record_id import RecordID
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+
+class FileChunk(TypedDict):
+    id: RecordID
+    text: str
+    embedding: List[float]
+
+
+class File(TypedDict):
+    id: RecordID
+    filename: str
+    file_chunks: List[FileChunk]
+
+
+class SearchRankingFileChunk(FileChunk):
+    score: float
+
+
+def rrf(weight, rank, rrf_k):
+    return weight * (1.0 / (rrf_k + rank))
+
+
+def rrf_reorder(
+    vector_results: List[SearchRankingFileChunk],
+    full_text_results: List[SearchRankingFileChunk],
+    vector_search_weight: float = 1.0,
+    full_text_search_weight: float = 1.0,
+    rrf_k: int = 60,
+) -> List[SearchRankingFileChunk]:
+    rrf_scores = {}
+
+    for rank, document in enumerate(vector_results, start=1):
+        rrf_scores[document["id"].id] = {
+            "document": document,
+            "rrf_score": rrf(vector_search_weight, rrf_k, rank),
+        }
+
+    for rank, document in enumerate(full_text_results, start=1):
+        if document["id"].id in rrf_scores:
+            rrf_scores[document["id"].id]["rrf_score"] += rrf(
+                full_text_search_weight, rrf_k, rank
+            )
+        else:
+            rrf_scores[document["id"].id] = {
+                "document": document,
+                "rrf_score": rrf(vector_search_weight, rrf_k, rank),
+            }
+
+    combined = []
+    combined.extend(vector_results)
+    combined.extend(full_text_results)
+    order = sorted(rrf_scores.items(), key=lambda x: -x[-1]["rrf_score"])
+    return [document[-1]["document"] for document in order]
 
 
 class SurrealClient(BaseModel):
@@ -74,19 +127,49 @@ class SurrealClient(BaseModel):
     def vector_search(
         self, query: str, query_embedding: List[float], top_k: int
     ) -> Sequence[TextNode]:
-        logger.debug("querying nodes", query)
-        surql = f"""
-        SELECT id, text, vector::distance::knn() AS score
-        FROM {self.vector_table}
-        WHERE embedding <|{top_k},64|> $vec
-        ORDER BY score;
+        # https://github.com/surrealdb/examples/blob/main/hybrid-search/hybrid-search.surql
+        query_string = f"""
+        BEGIN TRANSACTION;
+
+        LET $vector_search = (
+            SELECT id, text, vector::distance::knn() AS score
+            FROM {self.vector_table}
+            WHERE embedding <|{top_k},64|> $vec
+            ORDER BY score DESC
+            LIMIT 10
+        );
+        
+        LET $text_search = (
+            SELECT *,
+            search::highlight("**", "**", 1) AS body,
+            search::highlight("##", "", 0) AS title,
+            search::score(0) + search::score(1) AS score
+            FROM {self.vector_table}
+            WHERE text @0@ $full_text
+            OR text @1@ $full_text
+            ORDER BY score DESC
+            LIMIT 10
+        );
+        
+        RETURN {{
+          vector_results: $vector_search,
+          text_results: $text_search
+        }};
+        
+        COMMIT TRANSACTION;
         """
-        res = asyncio.run(self.conn.query(surql, {"vec": query_embedding}))
-        if len(res) == 0 or res is None:
+
+        res: dict[str, List[SearchRankingFileChunk]] = asyncio.run(
+            self.conn.query(query_string, {"vec": query_embedding, "full_text": query})
+        )  # type: ignore
+        reordered = rrf_reorder(res["vector_results"], res["text_results"], 1, 1, 60)
+        if len(reordered) == 0 or reordered is None:
             print("Result none")
             return []
         print("resutl not none")
 
-        nodes = [TextNode(id=r["id"].id, text=r["text"], score=r["score"]) for r in res]
+        nodes = [
+            TextNode(id=r["id"], text=r["text"], score=r["score"]) for r in reordered
+        ]
         print(nodes)
         return nodes
