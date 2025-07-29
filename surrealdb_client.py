@@ -163,13 +163,8 @@ class SurrealClient(BaseModel):
             self.conn.query(query_string, {"vec": query_embedding, "full_text": query})
         )  # type: ignore
         reordered = rrf_reorder(res["vector_results"], res["text_results"], 1, 1, 60)
-        if len(reordered) == 0 or reordered is None:
-            print("Result none")
+        if reordered is None or len(reordered) == 0:
             return []
-        print("resutl not none")
 
-        nodes = [
-            TextNode(id=r["id"], text=r["text"], score=r["score"]) for r in reordered
-        ]
-        print(nodes)
+        nodes = [TextNode(id=r["id"], text=r["text"]) for r in reordered]
         return nodes
