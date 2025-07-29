@@ -13,6 +13,7 @@ dependencies = [
     "llama-index",
     "einops>=0.8.1",
     "surrealdb>=1.0.6",
+    "python-dotenv>=1.1.1",
 ]
 
 [tool.uv.sources]
