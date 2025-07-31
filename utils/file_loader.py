@@ -5,7 +5,7 @@ import pymupdf4llm
 from llama_index.core.schema import Document
 
 
-class PDFLoader:
+class FileLoader:
     def __init__(self) -> None:
         self._reader = pymupdf4llm.LlamaMarkdownReader()
 
