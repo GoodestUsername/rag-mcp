@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import os
 from pathlib import Path
@@ -13,8 +11,8 @@ from surrealdb.connections.async_ws import AsyncWsSurrealConnection
 
 from surrealdb_client import SurrealClient
 from utils.embeddings import EmbeddingService
+from utils.file_loader import FileLoader
 from utils.fs import list_files
-from utils.pdf_loader import PDFLoader
 
 load_dotenv()
 DB_URL = os.getenv("SDB_URL", "")
@@ -28,7 +26,7 @@ FILE_CHUNK_TABLE = os.getenv("FILE_CHUNK_TABLE", "")
 FILES_DIR = Path(os.getenv("FILES_DIR", ""))
 EMBED_MODEL = os.getenv("EMBED_MODEL", "")
 CACHE_DIR = os.getenv("EMBED_CACHE_DIR", "")
-pdf_loader = PDFLoader()
+file_loader = FileLoader()
 embedder = EmbeddingService(EMBED_MODEL, cache_dir=CACHE_DIR)
 
 
@@ -42,7 +40,7 @@ def _create_db_connection() -> (
 
 
 def _documents_from_file(path: Path) -> Sequence[Document]:
-    docs = pdf_loader.load(path)
+    docs = file_loader.load(path)
     embeddings = embedder.encode([doc.text for doc in docs])
     for doc, emb in zip(docs, embeddings, strict=True):  # type: ignore[arg-type]
         doc.embedding = emb  # type: ignore[attr-defined]
