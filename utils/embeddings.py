@@ -36,7 +36,6 @@ class EmbeddingService:
     def encode(self, sentences: List[str] | str, *, batch_size: int = 32, **kwargs):  # type: ignore[override]
         if isinstance(sentences, str):
             sentences = [sentences]
-        breakpoint()
         return self.model.encode(
             sentences, batch_size=batch_size, convert_to_tensor=False, **kwargs
         )
